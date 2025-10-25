@@ -7,8 +7,8 @@ import express from 'express';
 import helmet from 'helmet';
 import hpp from 'hpp';
 import morgan from 'morgan';
-import swaggerJSDoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
+import swaggerJSDoc from 'swagger-jsdoc';
 import { NODE_ENV, PORT, LOG_FORMAT, ORIGIN, CREDENTIALS } from '@config';
 import { dbConnection } from '@database';
 import { Routes } from '@interfaces/routes.interface';
@@ -59,56 +59,138 @@ export class App {
     this.app.use(express.urlencoded({ extended: true }));
     this.app.use(cookieParser());
 
-    // ✅ Global rate limiter (all routes)
+    // Global rate limiter
     const globalLimiter = rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // max 100 requests per IP
+      windowMs: 15 * 60 * 1000, // 15 min
+      max: 100,
       standardHeaders: true,
       legacyHeaders: false,
-      message: {
-        success: false,
-        message: 'Too many requests from this IP, please try again later.',
-      },
+      message: { success: false, message: 'Too many requests from this IP' },
     });
     this.app.use(globalLimiter);
 
-    // ✅ Login-specific rate limiter (extra strict)
+    // Login-specific rate limiter
     const loginLimiter = rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 5, // max 5 login attempts per IP
+      windowMs: 15 * 60 * 1000,
+      max: 5,
       standardHeaders: true,
       legacyHeaders: false,
-      message: {
-        success: false,
-        message: 'Too many login attempts. Please try again later.',
-      },
+      message: { success: false, message: 'Too many login attempts' },
     });
-
-    // Apply loginLimiter only to /auth/login
     this.app.use('/auth/login', loginLimiter);
   }
 
   private initializeRoutes(routes: Routes[]) {
     routes.forEach(route => this.app.use(route.path, route.router));
     this.app.use((_, res) =>
-      res
-        .status(404)
-        .send({ message: 'Not found, Check the URL you are requesting and try again' }),
+      res.status(404).send({
+        message: 'Not found, Check the URL you are requesting and try again',
+      }),
     );
   }
 
   private initializeSwagger() {
-    const options = {
-      swaggerDefinition: {
-        info: {
-          title: 'REST API',
-          version: '1.0.0',
-          description: 'Example docs',
+    const swaggerDefinition = {
+      openapi: '3.0.3',
+      info: {
+        title: 'Task Management API',
+        version: '1.0.0',
+        description: 'RESTful API for Task Management System',
+      },
+      servers: [
+        { url: 'http://localhost:3000', description: 'Local server' },
+      ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+        },
+        schemas: {
+          RegisterRequest: {
+            type: 'object',
+            required: ['username', 'email', 'password'],
+            properties: {
+              username: { type: 'string', example: 'JohnDoe' },
+              email: { type: 'string', example: 'johndoe@example.com' },
+              password: { type: 'string', example: 'StrongP@ssword123' },
+              roles: { type: 'array', items: { type: 'string' }, example: ['User'] },
+            },
+          },
+          LoginRequest: {
+            type: 'object',
+            required: ['email', 'password'],
+            properties: {
+              email: { type: 'string', example: 'johndoe@example.com' },
+              password: { type: 'string', example: 'StrongP@ssword123' },
+            },
+          },
+          AuthResponse: {
+            type: 'object',
+            properties: {
+              message: { type: 'string' },
+              token: { type: 'string' },
+            },
+          },
+          UserProfile: {
+            type: 'object',
+            properties: {
+              _id: { type: 'string' },
+              username: { type: 'string' },
+              email: { type: 'string' },
+              roles: { type: 'array', items: { type: 'string' } },
+              managerId: { type: 'string', nullable: true },
+            },
+          },
+          Task: {
+            type: 'object',
+            properties: {
+              _id: { type: 'string' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              dueDate: { type: 'string', format: 'date' },
+              priority: { type: 'string' },
+              status: { type: 'string' },
+              assignedTo: { $ref: '#/components/schemas/UserProfile' },
+              createdBy: { $ref: '#/components/schemas/UserProfile' },
+            },
+          },
+          TaskRequest: {
+            type: 'object',
+            required: ['title'],
+            properties: {
+              title: { type: 'string' },
+              description: { type: 'string' },
+              dueDate: { type: 'string', format: 'date' },
+              priority: { type: 'string' },
+              assignedTo: { type: 'string' },
+            },
+          },
+          AssignTaskRequest: {
+            type: 'object',
+            required: ['taskId', 'userId'],
+            properties: {
+              taskId: { type: 'string' },
+              userId: { type: 'string' },
+            },
+          },
+          AnalyticsResponse: {
+            type: 'object',
+            properties: {
+              total: { type: 'integer' },
+              completed: { type: 'integer' },
+              pending: { type: 'integer' },
+              overdue: { type: 'integer' },
+            },
+          },
         },
       },
-      apis: ['swagger.yaml'],
+      security: [{ bearerAuth: [] }],
     };
 
+    const options = { swaggerDefinition, apis: [] }; // APIs can be auto-generated from routes if needed
     const specs = swaggerJSDoc(options);
     this.app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
   }
