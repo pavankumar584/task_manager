@@ -15,11 +15,16 @@ export class UserRoute implements Routes {
   }
 
   private initializeRoutes() {
-    // Get own profile
-    this.router.get('/getProfile', versionMiddleware(['1.0.0']), AuthMiddleware, authorizeRoles(['User', 'Manager', 'Admin']), (req, res) =>
-      new UserController(req, res).getProfile(),
+    // Get own profile with caching
+    this.router.get(
+      '/getProfile',
+      versionMiddleware(['1.0.0']),
+      AuthMiddleware,
+      authorizeRoles(['User', 'Manager', 'Admin']),
+      cacheMiddleware('profile', 60),
+      (req, res) => new UserController(req, res).getProfile(),
     );
-    
+
     this.router.get(
       '/tasks',
       versionMiddleware(['1.0.0']),
